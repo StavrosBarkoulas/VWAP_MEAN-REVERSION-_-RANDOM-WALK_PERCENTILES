@@ -1,0 +1,82 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Generate a random walk for price simulation with larger price changes
+def generate_random_walk(n_periods=1000, start_price=100):
+    np.random.seed()  # Ensure different random seed each time
+    returns = np.random.randn(n_periods) * 0.02  # Random returns with std deviation
+    prices = start_price * (1 + returns).cumprod()  # Simulate prices based on random walk
+    return prices
+
+# Simulate the strategy multiple times and display the charts with buy/sell signals
+def simulate_vwap_strategy_with_charts(n_runs=5, n_periods=1000):
+    for run in range(n_runs):
+        # Generate random price data and simulate strategy
+        prices = generate_random_walk(n_periods)
+        df = pd.DataFrame({'Close': prices})
+        df['Volume'] = np.random.randint(500, 10000, size=n_periods)
+
+        # Calculate VWAP
+        df['PriceVolume'] = df['Close'] * df['Volume']
+        df['Cumulative PriceVolume'] = df['PriceVolume'].cumsum()
+        df['Cumulative Volume'] = df['Volume'].cumsum()
+        df['VWAP'] = df['Cumulative PriceVolume'] / df['Cumulative Volume']
+
+        # Calculate Ratio (Price/VWAP)
+        df['Ratio'] = df['Close'] / df['VWAP']
+
+        # Loosen the percentiles for the Ratio
+        percentiles = [5, 10, 90, 95]
+        p = np.percentile(df['Ratio'].dropna(), percentiles)
+
+        # Define thresholds with more relaxed conditions
+        short_threshold = p[-1]  # 95th percentile for shorting
+        confirm_short_threshold = p[-2]  # 90th percentile for confirmation
+        long_threshold = p[0]  # 5th percentile for buying
+        confirm_long_threshold = p[1]  # 10th percentile for confirmation
+
+        # Initialize signals and positions
+        df['Short Signal'] = 0
+        df['Long Signal'] = 0
+        df['Position'] = 0
+
+        # Sequential Logic for Short Signal
+        short_triggered = False
+        for i in range(1, len(df)):
+            if df['Ratio'].iloc[i] > short_threshold:
+                short_triggered = True
+            if short_triggered and df['Ratio'].iloc[i] < confirm_short_threshold:
+                df.at[i, 'Short Signal'] = -1
+                short_triggered = False
+
+        # Sequential Logic for Long Signal
+        long_triggered = False
+        for i in range(1, len(df)):
+            if df['Ratio'].iloc[i] < long_threshold:
+                long_triggered = True
+            if long_triggered and df['Ratio'].iloc[i] > confirm_long_threshold:
+                df.at[i, 'Long Signal'] = 1
+                long_triggered = False
+
+        # Combine long and short signals
+        df['Position'] = df['Long Signal'] + df['Short Signal']
+
+        # Visualize price and signals
+        plt.figure(figsize=(14, 8))
+        plt.plot(df['Close'], label='Price', color='blue')
+        
+        buy_signals = df[df['Long Signal'] == 1]
+        sell_signals = df[df['Short Signal'] == -1]
+
+        plt.scatter(buy_signals.index, buy_signals['Close'], marker='v', color='green', s=100, label='Buy Signal (Long)', alpha=0.7)
+        plt.scatter(sell_signals.index, sell_signals['Close'], marker='^', color='red', s=100, label='Sell Signal (Short)', alpha=0.7)
+        plt.title(f'Random Walk Price with Sequential Buy (Green v) and Sell (Red ^) Signals (Run {run + 1})')
+        plt.xlabel('Time')
+        plt.ylabel('Price')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+# Run the strategy multiple times and show charts with buy/sell signals
+simulate_vwap_strategy_with_charts(n_runs=5)
