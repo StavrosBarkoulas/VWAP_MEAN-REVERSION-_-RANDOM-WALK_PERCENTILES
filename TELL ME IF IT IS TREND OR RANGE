@@ -1,0 +1,82 @@
+from scipy.stats import linregress
+
+# Generate a random walk for price simulation with larger price changes
+def generate_random_walk(n_periods=1000, start_price=100):
+    np.random.seed()  # Ensure different random seed each time
+    returns = np.random.randn(n_periods) * 0.02  # Random returns with standard deviation
+    prices = start_price * (1 + returns).cumprod()  # Simulate prices based on random walk
+    return prices
+
+# Function to calculate the slope of a price series using linear regression
+def calculate_slope(prices):
+    # Calculate time points (x-axis)
+    time_points = np.arange(len(prices))
+    # Perform linear regression to get the slope of the trend
+    slope, intercept, r_value, p_value, std_err = linregress(time_points, prices)
+    return slope
+
+# Function to determine trend or range based on slope and display chart
+def analyze_trend_or_range(prices, smoothing_period=10):
+    # Apply a simple moving average (SMA) to reduce noise
+    smoothed_prices = pd.Series(prices).rolling(window=smoothing_period).mean().dropna()
+
+    slope = calculate_slope(smoothed_prices)
+
+    # Threshold for detecting trend vs range (slope close to zero is range)
+    slope_threshold = 0.01
+
+    if slope > slope_threshold:
+        trend = "Positive Trend"
+    elif slope < -slope_threshold:
+        trend = "Negative Trend"
+    else:
+        trend = "Range"
+
+    # Plot the price chart with trend/range label
+    plt.figure(figsize=(14, 8))
+    plt.plot(prices, label='Original Price', color='lightblue', alpha=0.6)
+    plt.plot(smoothed_prices, label='Smoothed Price (SMA)', color='blue')
+    plt.title(f'Random Walk Price Movement ({trend})')
+    plt.xlabel('Time')
+    plt.ylabel('Price')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    return trend
+
+# Updated simulation with moving average smoothing and adjustable slope threshold
+def monte_carlo_simulation_trend_adjusted(n_runs=5, n_periods=1000, smoothing_period=20, slope_threshold=0.02):
+    for run in range(n_runs):
+        prices = generate_random_walk(n_periods)
+        
+        # Apply a simple moving average (SMA) to reduce noise
+        smoothed_prices = pd.Series(prices).rolling(window=smoothing_period).mean().dropna()
+
+        # Calculate the slope of the smoothed price series
+        slope = calculate_slope(smoothed_prices)
+
+        # Determine if the market is in a trend or range based on the slope
+        if slope > slope_threshold:
+            trend = "Positive Trend"
+        elif slope < -slope_threshold:
+            trend = "Negative Trend"
+        else:
+            trend = "Range"
+
+        # Plot the price chart with trend/range label
+        plt.figure(figsize=(14, 8))
+        plt.plot(prices, label='Original Price', color='lightblue', alpha=0.6)
+        plt.plot(smoothed_prices, label=f'Smoothed Price (SMA {smoothing_period})', color='blue')
+        plt.title(f'Random Walk Price Movement ({trend}) - Run {run + 1}')
+        plt.xlabel('Time')
+        plt.ylabel('Price')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+        print(f"Run {run + 1}: {trend}")
+
+# Running the simulation with adjusted slope threshold and moving average smoothing
+monte_carlo_simulation_trend_adjusted(n_runs=5, smoothing_period=30, slope_threshold=0.015)  # Adjusted slope threshold to 0.015
+
