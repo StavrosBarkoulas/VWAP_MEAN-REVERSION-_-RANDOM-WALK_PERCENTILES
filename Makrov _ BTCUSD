@@ -1,0 +1,66 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import statsmodels.api as sm
+import yfinance as yf
+
+# Load Bitcoin data from Yahoo Finance (2014 to today)
+btc_data = yf.download('BTC-USD', start='2014-01-01', end='2024-10-01', interval='1d')
+
+# Set daily frequency and fill missing values
+btc_data = btc_data.asfreq('D')
+btc_data = btc_data.ffill()  # Forward-fill missing data
+
+# Calculate daily returns and smoothed returns to reduce noise
+btc_data['Return'] = btc_data['Adj Close'].pct_change()
+btc_data['Smoothed Return'] = btc_data['Return'].rolling(window=90).mean()
+
+# Normalize volume to make it more comparable
+btc_data['Normalized Volume'] = (btc_data['Volume'] - btc_data['Volume'].mean()) / btc_data['Volume'].std()
+
+# Drop missing values after applying rolling window
+btc_data = btc_data.dropna()
+
+# Include normalized volume as an additional explanatory variable in the Markov Switching Model
+exog = btc_data[['Normalized Volume']]
+
+# Build the Markov Switching Model with smoothed returns and normalized volume
+mod = sm.tsa.MarkovRegression(btc_data['Smoothed Return'], k_regimes=2, trend='c', exog=exog, switching_variance=True)
+
+# Fit the model
+res = mod.fit()
+
+# Extract the smoothed probabilities of being in the bull or bear market regime
+btc_data['Regime_Prob_Bull'] = res.smoothed_marginal_probabilities[1]  # Probability of being in Bull market
+btc_data['Regime_Prob_Bear'] = 1 - btc_data['Regime_Prob_Bull']  # Probability of being in Bear market
+
+# Define thresholds for identifying bull and bear markets
+threshold_bull = 0.9
+threshold_bear = 0.9
+
+# Create signals for bull and bear markets based on thresholds
+btc_data['Bull Market'] = btc_data['Regime_Prob_Bull'] > threshold_bull
+btc_data['Bear Market'] = btc_data['Regime_Prob_Bear'] > threshold_bear
+
+# Generate buy and sell signals based on market regime changes
+btc_data['Buy Signal'] = np.where((btc_data['Bull Market'].shift(1) == False) & (btc_data['Bull Market'] == True), btc_data['Adj Close'], np.nan)
+btc_data['Sell Signal'] = np.where((btc_data['Bear Market'].shift(1) == False) & (btc_data['Bear Market'] == True), btc_data['Adj Close'], np.nan)
+
+# Plot the Bitcoin price and the buy/sell signals without probabilities
+plt.figure(figsize=(14, 8))
+
+# Plot the Bitcoin price
+plt.plot(btc_data.index, btc_data['Adj Close'], label='Bitcoin Price', color='blue')
+
+# Plot buy and sell signals
+plt.scatter(btc_data.index, btc_data['Buy Signal'], marker='v', color='green', s=100, label='Buy Signal (Bull Start)', alpha=0.7)
+plt.scatter(btc_data.index, btc_data['Sell Signal'], marker='^', color='red', s=100, label='Sell Signal (Bear Start)', alpha=0.7)
+
+# Set labels and title
+plt.ylabel('Price (USD)')
+plt.title('Bitcoin Price with Buy and Sell Signals (Threshold Bull/Bear)')
+plt.legend(loc='upper left')
+
+# Add grid for better readability
+plt.grid(True)
+plt.show()
